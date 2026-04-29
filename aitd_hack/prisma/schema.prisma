@@ -17,18 +17,51 @@ model Profile {
 }
 
 model Item {
-  id           String   @id @default(uuid())
-  createdAt    DateTime @default(now())
-  title        String
-  description  String?
-  imageUrl     String
-  locationName String?
-  type         String
-  status       String   @default("active")
-  isVerified   Boolean  @default(false)
+  id            String       @id @default(uuid())
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
 
-  embedding    Unsupported("vector(768)")?
+  title         String
+  description   String?
+  locationName  String?
 
-  userId       String
-  user         Profile  @relation(fields: [userId], references: [id])
+  lostDate      DateTime?
+  lostTime      String?
+
+  category      ItemCategory @default(OTHER)
+  status        ItemStatus   @default(ACTIVE)
+  isVerified    Boolean      @default(false)
+
+  imageUrl      String?
+  images        ItemImage[]
+
+  embedding     Unsupported("vector(768)")?
+
+  userId        String
+  user          Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ItemImage {
+  id         String   @id @default(uuid())
+  url        String
+  fileName   String?
+  createdAt  DateTime @default(now())
+
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+enum ItemCategory {
+  ELECTRONICS
+  BAGS
+  ACCESSORIES
+  DOCUMENTS
+  KEYS
+  OTHER
+}
+
+enum ItemStatus {
+  ACTIVE
+  RESOLVED
+  CLOSED
 }
