@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import DashboardClient from '../../components/DashboardClient';
@@ -14,24 +13,17 @@ function formatCategory(category: string) {
 export default async function DashboardPage() {
   const { userId } = await auth();
 
-  if (!userId) {
-    throw new Error('Not authenticated');
-  }
+  if (!userId) throw new Error('Not authenticated');
 
   const clerkUser = await currentUser();
-
-  if (!clerkUser) {
-    throw new Error('Clerk user not found');
-  }
+  if (!clerkUser) throw new Error('Clerk user not found');
 
   const primaryEmail =
     clerkUser.emailAddresses.find(
       (e) => e.id === clerkUser.primaryEmailAddressId
     )?.emailAddress ?? '';
 
-  if (!primaryEmail) {
-    throw new Error('No primary email found for Clerk user');
-  }
+  if (!primaryEmail) throw new Error('No primary email found for Clerk user');
 
   const dbProfile = await prisma.profile.upsert({
     where: { id: userId },
@@ -59,16 +51,27 @@ export default async function DashboardPage() {
     title: item.title,
     location: item.locationName ?? '',
     description: item.description ?? '',
+
+    // lostDate is DateTime?, lostTime is String? — combine if both exist
     timeItemLost:
       item.lostDate && item.lostTime
         ? `${item.lostDate.toISOString().split('T')[0]}T${item.lostTime}`
+        : item.lostDate
+        ? item.lostDate.toISOString().split('T')[0]
         : '',
+
+    // category is an enum — format it like "ELECTRONICS" → "Electronics"
     category: formatCategory(item.category),
+
+    // no Forum model in schema yet — hardcode or derive from item type
     forum: 'Lost Items',
+
     author: 'You',
     createdAt: item.createdAt.toISOString(),
-    likes: 0,
-    comments: 0,
+    likes: 0,    // no Like model yet
+    comments: 0, // no Comment model yet
+
+    // prefer ItemImage rows, fall back to legacy imageUrl
     images:
       item.images.length > 0
         ? item.images.map((img) => img.url)
@@ -84,8 +87,8 @@ export default async function DashboardPage() {
       profileRow={{
         id: dbProfile.id,
         email: dbProfile.email,
-        username: dbProfile.username,
-        contactNumber: dbProfile.contactNumber,
+        username: dbProfile.username ?? null,
+        contactNumber: dbProfile.contactNumber ?? null,
       }}
       initialPosts={posts}
     />

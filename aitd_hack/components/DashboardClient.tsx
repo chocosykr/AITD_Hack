@@ -56,10 +56,21 @@ const categories = [
   'Other',
 ];
 
+function pad(n: number) {
+  return n.toString().padStart(2, '0');
+}
+
 function formatCreatedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 export default function DashboardClient({
@@ -350,6 +361,7 @@ export default function DashboardClient({
                     {filteredPosts.map((post: Post) => (
                       <article
                         key={post.id}
+                        onClick={() => router.push(`/dashboard/posts/${post.id}`)}
                         className="min-h-[320px] rounded-[28px] border border-white/10 bg-neutral-950/50 p-5 transition hover:border-cyan-400/30 hover:bg-neutral-950/65"
                       >
                         <div className="flex h-full flex-col justify-between">

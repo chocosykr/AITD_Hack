@@ -7,13 +7,14 @@ datasource db {
 }
 
 model Profile {
-  id            String   @id
-  username      String?  @unique
+  id            String    @id
+  username      String?   @unique
   contactNumber String?
-  email         String   @unique
-  createdAt     DateTime @default(now())
+  email         String    @unique
+  createdAt     DateTime  @default(now())
 
   items         Item[]
+  comments      Comment[]
 }
 
 model Item {
@@ -34,6 +35,7 @@ model Item {
 
   imageUrl      String?
   images        ItemImage[]
+  comments      Comment[]
 
   embedding     Unsupported("vector(768)")?
 
@@ -49,6 +51,18 @@ model ItemImage {
 
   itemId     String
   item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  content    String
+  createdAt  DateTime @default(now())
+
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  userId     String
+  user       Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum ItemCategory {
