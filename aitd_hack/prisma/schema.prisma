@@ -1,78 +1,34 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 model Profile {
-  id             String    @id // This matches Clerk's user_id
-  username       String?   @unique
-  contactNumber  String?
-  createdAt      DateTime  @default(now())  
-  items          Item[]
-  comments       Comment[]
-  qrTags         QrTag[]
-}
+  id            String   @id
+  username      String?  @unique
+  contactNumber String?
+  email         String   @unique
+  createdAt     DateTime @default(now())
 
-model Category {
-  id    String @id @default(uuid())
-  name  String @unique
-  slug  String @unique
-  items Item[]
-}
-
-model QrTag {
-  id        String   @id @default(uuid())
-  label     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  
-  ownerId   String
-  owner     Profile  @relation(fields: [ownerId], references: [id])
-  items     Item[]
+  items         Item[]
 }
 
 model Item {
-  id           String    @id @default(uuid())
-  createdAt    DateTime  @default(now())
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
   title        String
   description  String?
   imageUrl     String
   locationName String?
-  type         String    // "lost" or "found"
-  status       String    @default("active") // "active", "pending", "resolved"
-  isVerified   Boolean   @default(false)
-  
-  // pgvector support
+  type         String
+  status       String   @default("active")
+  isVerified   Boolean  @default(false)
+
   embedding    Unsupported("vector(768)")?
 
-  categoryId   String
-  category     Category  @relation(fields: [categoryId], references: [id])
-  
   userId       String
-  user         Profile   @relation(fields: [userId], references: [id])
-  
-  qrTagId      String?
-  qrTag        QrTag?    @relation(fields: [qrTagId], references: [id])
-  
-  comments     Comment[]
-}
-
-model Comment {
-  id        String   @id @default(uuid())
-  content   String
-  createdAt DateTime @default(now())
-  
-  itemId    String
-  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
-  userId    String
-  user      Profile  @relation(fields: [userId], references: [id])
+  user         Profile  @relation(fields: [userId], references: [id])
 }
