@@ -81,7 +81,7 @@ export default function DashboardClient({
 }: DashboardClientProps) {
   const router = useRouter();
 
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
+  const [posts, setPosts] = useState<Post[]>(initialPosts)
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
@@ -195,38 +195,41 @@ export default function DashboardClient({
   if (!lostDate) return setFormError('Please select the lost date.');
   if (!lostTime) return setFormError('Please select the lost time.');
   if (!category) return setFormError('Please select a category.');
-  if (imageNames.length < 1) return setFormError('Please add at least 1 image.');
-  if (imageNames.length > 5) return setFormError('You can upload at most 5 images.');
+  if (imageFiles.length < 1) return setFormError('Please add at least 1 image.');
+  if (imageFiles.length > 5) return setFormError('You can upload at most 5 images.');
 
   try {
+    setSubmitting(true);
     setFormError('');
 
-    const res = await fetch('/api/items', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title,
-        location,
-        description,
-        lostDate,
-        lostTime,
-        category,
-        imageNames,
-      }),
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('location', location);
+    formData.append('description', description);
+    formData.append('lostDate', lostDate);
+    formData.append('lostTime', lostTime);
+    formData.append('category', category);
+
+    imageFiles.forEach((file) => {
+      formData.append('images', file);
     });
 
-    const data = await res.json();
+   const res = await fetch('/api/items', {
+  method: 'POST',
+  body: formData,
+});
 
-    if (!res.ok) {
-      setFormError(data.error ?? 'Failed to create post');
-      return;
-    }
+const data = await res.json();
+console.log('API response:', data);
+
+if (!res.ok) {
+  setFormError(data.error ?? 'Failed to create post');
+  return;
+}
 
     const created = data.item;
 
-    const newPost = {
+    const newPost: Post = {
       id: created.id,
       title: created.title,
       location: created.locationName ?? '',
@@ -245,9 +248,11 @@ export default function DashboardClient({
 
     resetForm();
     setCreateOpen(false);
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     setFormError('Something went wrong. Please try again.');
+  } finally {
+    setSubmitting(false);
   }
 };
 
