@@ -1,403 +1,256 @@
-'use client';
+import prisma from "@/lib/prisma"
+import { auth } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
+import { 
+  Search, MapPin, Clock, Eye, Package, 
+  AlertTriangle, CheckCircle2, ArrowRight, 
+  Sparkles, Zap, LayoutDashboard, Plus
+} from "lucide-react"
+import Link from "next/link"
+import { findSimilarItems } from "@/app/actions/similarity-actions"
+import { QRCodeSection } from "./QRCodeSection"
 
-import React, { useMemo, useState } from 'react';
-import CreatePostModal from '../../components/CreatePostModal';
+export default async function DashboardPage() {
+  const { userId } = await auth()
+  if (!userId) redirect("/")
 
-type Post = {
-  id: number;
-  title: string;
-  location: string;
-  description: string;
-  timeItemLost: string;
-  category: string;
-  forum: string;
-  author: string;
-  createdAt: string;
-  likes: number;
-  comments: number;
-  images: string[];
-};
+  const userItems = await prisma.item.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  })
 
-type ForumGroup = {
-  name: string;
-  count: number;
-};
+  const lostItems = userItems.filter((i) => i.type === "lost")
+  const foundItems = userItems.filter((i) => i.type === "found")
 
-type ForumWithPosts = ForumGroup & {
-  posts: Post[];
-};
+  const matches = await (prisma as any).match.findMany({
+    where: {
+      OR: [{ lostItem: { userId } }, { foundItem: { userId } }],
+    },
+    include: {
+      lostItem: { include: { user: true } },
+      foundItem: { include: { user: true } },
+    },
+    orderBy: { similarityScore: "desc" },
+  })
 
-const baseForums: ForumGroup[] = [
-  { name: 'Lost Items', count: 0 },
-  { name: 'Found Items', count: 0 },
-  { name: 'Community Alerts', count: 0 },
-  { name: 'Help Desk', count: 0 },
-];
+  const lostItemMatches: Record<string, any[]> = {}
+  const lostItemSimilar: Record<string, any[]> = {}
+  
+  for (const item of lostItems) {
+    lostItemMatches[item.id] = matches.filter((m: any) => m.lostItemId === item.id)
+    lostItemSimilar[item.id] = await findSimilarItems(item.id, item.type, 6)
+  }
 
-const categories = ['Electronics', 'Bags', 'Accessories', 'Documents', 'Keys', 'Other'];
-
-const initialPosts: Post[] = [
-  {
-    id: 1,
-    title: 'Lost black backpack near station exit',
-    location: 'Andheri Station Exit 2',
-    description:
-      'Black backpack with a laptop sleeve and small tripod inside. Lost while changing platforms in the evening rush.',
-    timeItemLost: '2026-04-29T18:30',
-    category: 'Bags',
-    forum: 'Lost Items',
-    author: 'You',
-    createdAt: '2h ago',
-    likes: 14,
-    comments: 6,
-    images: ['bag_front.jpg', 'bag_side.jpg', 'zipper_closeup.jpg'],
-  },
-  {
-    id: 2,
-    title: 'Looking for silver watch',
-    location: 'Powai Lake walkway',
-    description:
-      'Silver analog watch with a dark strap. It may have fallen off during a walk in the late afternoon.',
-    timeItemLost: '2026-04-28T17:15',
-    category: 'Accessories',
-    forum: 'Lost Items',
-    author: 'You',
-    createdAt: 'Yesterday',
-    likes: 9,
-    comments: 3,
-    images: ['watch_front.jpg', 'watch_strap.jpg', 'watch_dial.jpg'],
-  },
-];
-
-export default function ForumPostsPage() {
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
-  const [title, setTitle] = useState('');
-  const [location, setLocation] = useState('');
-  const [description, setDescription] = useState('');
-  const [lostDate, setLostDate] = useState('');
-  const [lostTime, setLostTime] = useState('');
-  const [category, setCategory] = useState('Electronics');
-  const [forum, setForum] = useState('Lost Items');
-  const [activeSidebar, setActiveSidebar] = useState<'posts' | 'forums'>('posts');
-  const [search, setSearch] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
-  const [imageNames, setImageNames] = useState<string[]>([]);
-  const [formError, setFormError] = useState('');
-
-  const filteredPosts = useMemo((): Post[] => {
-    const query = search.trim().toLowerCase();
-    if (!query) return posts;
-    return posts.filter(
-      (post: Post) =>
-        post.title.toLowerCase().includes(query) ||
-        post.description.toLowerCase().includes(query) ||
-        post.location.toLowerCase().includes(query) ||
-        post.category.toLowerCase().includes(query) ||
-        post.forum.toLowerCase().includes(query)
-    );
-  }, [posts, search]);
-
-  const forums = useMemo((): ForumGroup[] => {
-    return baseForums.map((forumItem: ForumGroup) => ({
-      ...forumItem,
-      count: posts.filter((post: Post) => post.forum === forumItem.name).length,
-    }));
-  }, [posts]);
-
-  const postsByForum = useMemo((): ForumWithPosts[] => {
-    return forums.map((forumItem: ForumGroup) => ({
-      ...forumItem,
-      posts: posts.filter((post: Post) => post.forum === forumItem.name),
-    }));
-  }, [forums, posts]);
-
-  const resetForm = () => {
-    setTitle('');
-    setLocation('');
-    setDescription('');
-    setLostDate('');
-    setLostTime('');
-    setCategory('Electronics');
-    setImageNames([]);
-    setFormError('');
-  };
-
-  const validateImageCount = (count: number) => {
-    if (count === 0) {
-      setFormError('');
-      return;
-    }
-    if (count > 5) {
-      setFormError('You can upload at most 5 images.');
-      return;
-    }
-    setFormError('');
-  };
-
-  const handleImageChange = (files: FileList | null) => {
-    if (!files) return;
-
-    const incoming = Array.from(files).map((file: File) => file.name);
-    setImageNames((current: string[]) => {
-      const merged = [...current];
-      for (const name of incoming) {
-        if (!merged.includes(name) && merged.length < 5) {
-          merged.push(name);
-        }
-      }
-      validateImageCount(merged.length);
-      return merged;
-    });
-  };
-
-  const handleRemoveImage = (name: string) => {
-    setImageNames((current: string[]) => {
-      const next = current.filter((item: string) => item !== name);
-      validateImageCount(next.length);
-      return next;
-    });
-  };
-
-  const handleCreatePost = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!title.trim()) return setFormError('Please enter a post title.');
-    if (!location.trim()) return setFormError('Please enter the location.');
-    if (!description.trim()) return setFormError('Please enter a description.');
-    if (!lostDate) return setFormError('Please select the lost date.');
-    if (!lostTime) return setFormError('Please select the lost time.');
-    if (!category) return setFormError('Please select a category.');
-    if (imageNames.length < 1) return setFormError('Please add at least 1 image.');
-    if (imageNames.length > 5) return setFormError('You can upload at most 5 images.');
-
-    const timeItemLost = `${lostDate}T${lostTime}`;
-
-    const newPost: Post = {
-      id: Date.now(),
-      title: title.trim(),
-      location: location.trim(),
-      description: description.trim(),
-      timeItemLost,
-      category,
-      forum,
-      author: 'You',
-      createdAt: 'Just now',
-      likes: 0,
-      comments: 0,
-      images: imageNames,
-    };
-
-    setPosts((current: Post[]) => [newPost, ...current]);
-    setActiveSidebar('posts');
-    resetForm();
-    setCreateOpen(false);
-  };
+  const stats = [
+    { label: "Total Reports", value: userItems.length, icon: Package, color: "indigo" },
+    { label: "Active Listings", value: userItems.filter(i => i.status === "active").length, icon: Eye, color: "amber" },
+    { label: "AI Matches", value: matches.filter((m: any) => m.status === "pending").length, icon: Zap, color: "purple" },
+    { label: "Resolved", value: userItems.filter(i => i.status === "matched" || i.status === "returned").length, icon: CheckCircle2, color: "emerald" },
+  ]
 
   return (
-    <>
-      <div className="min-h-screen bg-neutral-950 text-white">
-        <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
-          <aside className="border-b border-white/10 bg-neutral-900/90 p-5 lg:border-b-0 lg:border-r lg:p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/20">
-                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M4 7.5C4 6.12 5.12 5 6.5 5h11C18.88 5 20 6.12 20 7.5v6C20 14.88 18.88 16 17.5 16H9l-5 3v-3.5z" />
-                </svg>
+    <main className="min-h-screen bg-[#fcfcfd] pb-24">
+      {/* --- REFINED DASHBOARD HEADER --- */}
+      <div className="relative pt-12 pb-20 overflow-hidden">
+        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-50/50 via-transparent to-transparent" />
+        
+        <div className="container relative z-10 mx-auto px-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase tracking-[0.2em]">
+                <LayoutDashboard className="w-4 h-4" />
+                Command Center
               </div>
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-white/45">Community</p>
-                <h1 className="text-lg font-semibold">Lost & Found Forum</h1>
-              </div>
+              <h1 className="text-4xl font-bold tracking-tight text-slate-900">My Dashboard</h1>
+              <p className="text-slate-500 font-medium">Monitoring your registry and autonomous visual matches.</p>
             </div>
-
-            <nav className="mt-8 space-y-2">
-              <button
-                onClick={() => setActiveSidebar('posts')}
-                className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                  activeSidebar === 'posts'
-                    ? 'bg-cyan-500 text-neutral-950'
-                    : 'bg-white/5 text-white/80 hover:bg-white/10'
-                }`}
-              >
-                <span>Your Posts</span>
-                <span className="rounded-full bg-black/15 px-2 py-1 text-xs">{posts.length}</span>
-              </button>
-
-              <button
-                onClick={() => setActiveSidebar('forums')}
-                className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium transition ${
-                  activeSidebar === 'forums'
-                    ? 'bg-cyan-500 text-neutral-950'
-                    : 'bg-white/5 text-white/80 hover:bg-white/10'
-                }`}
-              >
-                <span>View Forums</span>
-                <span className="rounded-full bg-black/15 px-2 py-1 text-xs">{forums.length}</span>
-              </button>
-            </nav>
-          </aside>
-
-          <main className="bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.10),_transparent_35%),linear-gradient(180deg,_rgba(255,255,255,0.02),_rgba(255,255,255,0))] p-4 sm:p-6 lg:p-8">
-            <section className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-              <div className="rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur sm:p-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.28em] text-cyan-300/70">Lost & found</p>
-                    <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Create post as separate component</h2>
-                    <p className="mt-2 max-w-2xl text-sm text-white/60 sm:text-base">
-                      The page now uses separate lost date and lost time fields, and image upload supports 1 to 5 files.
-                    </p>
-                  </div>
-
-                  <div className="w-full max-w-md">
-                    <label className="mb-2 block text-sm text-white/60">Search posts</label>
-                    <input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search title, location, category, or forum"
-                      className="h-12 w-full rounded-2xl border border-white/10 bg-neutral-950/60 px-4 text-sm outline-none placeholder:text-white/30 focus:border-cyan-400/50"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {activeSidebar === 'posts' ? (
-                <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6">
-                  <div className="mb-5 flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-xl font-semibold">Your Posts</h3>
-                      <p className="mt-1 text-sm text-white/50">Create a post and it appears here immediately.</p>
-                    </div>
-                    <div className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/50">
-                      {filteredPosts.length} visible
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <button
-                      onClick={() => {
-                        setFormError('');
-                        setCreateOpen(true);
-                      }}
-                      className="group min-h-[320px] rounded-[28px] border border-dashed border-cyan-400/35 bg-cyan-400/6 p-6 text-left transition hover:border-cyan-300 hover:bg-cyan-400/10"
-                    >
-                      <div className="flex h-full flex-col justify-between">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-400 text-3xl font-light text-neutral-950 shadow-lg shadow-cyan-500/20">
-                          +
-                        </div>
-                        <div>
-                          <h4 className="text-xl font-semibold text-white">Create new post</h4>
-                          <p className="mt-2 text-sm leading-6 text-white/60">
-                            Open the separate modal component and publish a lost item post.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-
-                    {filteredPosts.map((post: Post) => (
-                      <article
-                        key={post.id}
-                        className="min-h-[320px] rounded-[28px] border border-white/10 bg-neutral-950/50 p-5 transition hover:border-cyan-400/30 hover:bg-neutral-950/65"
-                      >
-                        <div className="flex h-full flex-col justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
-                              <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-cyan-300">{post.category}</span>
-                              <span>{post.createdAt}</span>
-                            </div>
-                            <h4 className="mt-4 text-lg font-semibold text-white">{post.title}</h4>
-                            <p className="mt-2 text-sm text-white/55">{post.location}</p>
-                            <p className="mt-3 text-sm leading-6 text-white/65">{post.description}</p>
-                          </div>
-
-                          <div className="mt-5 space-y-3">
-                            <div className="flex flex-wrap gap-2 text-xs text-white/55">
-                              <span className="rounded-full bg-white/6 px-3 py-1">{post.forum}</span>
-                              <span className="rounded-full bg-white/6 px-3 py-1">{post.images.length} images</span>
-                            </div>
-                            <div className="text-xs text-white/45">Lost at: {post.timeItemLost}</div>
-                            <div className="flex items-center justify-between text-sm text-white/45">
-                              <span>♥ {post.likes}</span>
-                              <span>💬 {post.comments}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6">
-                  <div className="mb-5">
-                    <h3 className="text-xl font-semibold">View Forums</h3>
-                    <p className="mt-1 text-sm text-white/50">The same created post also appears in its selected forum below.</p>
-                  </div>
-
-                  <div className="space-y-6">
-                    {postsByForum.map((forumItem: ForumWithPosts) => (
-                      <div key={forumItem.name} className="rounded-[28px] border border-white/10 bg-neutral-950/35 p-5">
-                        <div className="mb-4 flex items-center justify-between gap-4">
-                          <div>
-                            <h4 className="text-lg font-semibold text-white">{forumItem.name}</h4>
-                            <p className="mt-1 text-sm text-white/50">{forumItem.posts.length} posts in this forum</p>
-                          </div>
-                        </div>
-
-                        {forumItem.posts.length > 0 ? (
-                          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            {forumItem.posts.map((post: Post) => (
-                              <article key={post.id} className="rounded-[24px] border border-white/10 bg-black/20 p-4">
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
-                                  <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-cyan-300">{post.category}</span>
-                                  <span>{post.location}</span>
-                                </div>
-                                <h5 className="mt-3 text-base font-semibold text-white">{post.title}</h5>
-                                <p className="mt-2 line-clamp-3 text-sm text-white/60">{post.description}</p>
-                                <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/45">
-                                  <span>{post.images.length} images</span>
-                                  <span>•</span>
-                                  <span>{post.createdAt}</span>
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="rounded-3xl border border-dashed border-white/15 bg-black/20 px-6 py-10 text-center text-sm text-white/50">
-                            No posts in this forum yet.
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </section>
-          </main>
+            
+            <div className="flex items-center gap-3">
+              <Link href="/report?type=lost" className="group flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all hover:bg-indigo-600 active:scale-95">
+                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform" />
+                Report New
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
 
-      <CreatePostModal
-        open={createOpen}
-        title={title}
-        location={location}
-        description={description}
-        lostDate={lostDate}
-        lostTime={lostTime}
-        category={category}
-        categories={categories}
-        imageNames={imageNames}
-        error={formError}
-        onClose={() => setCreateOpen(false)}
-        onTitleChange={setTitle}
-        onLocationChange={setLocation}
-        onDescriptionChange={setDescription}
-        onLostDateChange={setLostDate}
-        onLostTimeChange={setLostTime}
-        onCategoryChange={setCategory}
-        onImageChange={handleImageChange}
-        onRemoveImage={handleRemoveImage}
-        onSubmit={handleCreatePost}
-      />
-    </>
-  );
+      <div className="container mx-auto px-6 space-y-12 -mt-10 relative z-20">
+        
+        {/* QR Section with Glass Effect */}
+        <div className="rounded-[2.5rem] overflow-hidden bg-white ring-1 ring-slate-200/60 shadow-[0_20px_50px_rgba(0,0,0,0.03)]">
+          <QRCodeSection userId={userId} domainUrl={process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"} />
+        </div>
+
+        {/* --- STATS GRID --- */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {stats.map((stat, i) => (
+            <div key={i} className="group bg-white rounded-[2rem] p-8 ring-1 ring-slate-200/50 shadow-sm hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] transition-all">
+              <div className="flex items-center justify-between mb-4">
+                <div className={`p-3 rounded-2xl bg-${stat.color}-50 ring-1 ring-${stat.color}-100`}>
+                  <stat.icon className={`w-5 h-5 text-${stat.color}-600`} />
+                </div>
+                <span className="text-3xl font-black text-slate-900 tracking-tighter">{stat.value}</span>
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* --- MY LOST ITEMS (High Priority) --- */}
+        <section className="space-y-8">
+          <div className="flex items-end justify-between px-2">
+            <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+              <span className="w-2 h-8 rounded-full bg-red-500" />
+              Lost Registry
+            </h2>
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{lostItems.length} Entries</span>
+          </div>
+
+          {lostItems.length === 0 ? (
+            <div className="py-20 bg-white rounded-[3rem] border border-dashed border-slate-200 flex flex-col items-center justify-center">
+              <Package className="w-10 h-10 text-slate-200 mb-4" />
+              <p className="text-slate-400 font-medium">No lost items on record.</p>
+            </div>
+          ) : (
+            <div className="space-y-10">
+              {lostItems.map((item) => {
+                const itemMatches = lostItemMatches[item.id] || []
+                const similarItems = lostItemSimilar[item.id] || []
+                return (
+                  <div key={item.id} className="group bg-white rounded-[3rem] ring-1 ring-slate-200/60 shadow-sm overflow-hidden flex flex-col">
+                    
+                    {/* Item Master Card */}
+                    <div className="flex flex-col lg:flex-row">
+                      <div className="lg:w-72 h-64 lg:h-auto bg-slate-50 relative overflow-hidden shrink-0 flex items-center justify-center">
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                        ) : (
+                          <Search className="w-10 h-10 text-slate-300" />
+                        )}
+                        <div className="absolute top-6 left-6">
+                           <span className="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-white/90 backdrop-blur-md text-red-600 border border-red-100">Lost</span>
+                        </div>
+                      </div>
+
+                      <div className="p-10 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-4">
+                            <h3 className="text-3xl font-bold text-slate-900 tracking-tight leading-none group-hover:text-indigo-600 transition-colors">
+                              {item.title}
+                            </h3>
+                            <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                              item.status === 'active' ? 'bg-amber-50 text-amber-600 ring-1 ring-amber-100' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-500 font-medium leading-relaxed mb-8 max-w-2xl">{item.description || "System authentication pending..."}</p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-6 pt-6 border-t border-slate-50">
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400">
+                            <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                            {item.locationName || "Goa, India"}
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400">
+                            <Clock className="w-3.5 h-3.5" />
+                            {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* AI SUB-SECTION: Intelligence Feed */}
+                    {(itemMatches.length > 0 || similarItems.length > 0) && (
+                      <div className="bg-[#f8fafc]/80 backdrop-blur-md border-t border-slate-100 p-10 space-y-8">
+                        
+                        {/* Confirmed High-Probability Matches */}
+                        {itemMatches.length > 0 && (
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-emerald-600 tracking-[0.2em]">
+                               <Zap className="w-4 h-4 fill-emerald-100" />
+                               Confirmed Visual Matches
+                             </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                               {itemMatches.map((match: any) => (
+                                 <div key={match.id} className="bg-white rounded-3xl p-4 ring-1 ring-emerald-100 flex items-center gap-4 hover:shadow-lg transition-all">
+                                   <img src={match.foundItem.imageUrl} className="w-16 h-16 rounded-2xl object-cover" alt="" />
+                                   <div className="min-w-0">
+                                      <p className="text-sm font-bold text-slate-900 truncate">{match.foundItem.title}</p>
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] font-black px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-lg">{Math.round(match.similarityScore)}% Score</span>
+                                      </div>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                          </div>
+                        )}
+
+                        {/* Similarity Engine (pgvector) */}
+                        {similarItems.length > 0 && (
+                          <div className="space-y-4">
+                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-purple-600 tracking-[0.2em]">
+                               <Sparkles className="w-4 h-4 fill-purple-100" />
+                               Autonomous Similarity Search
+                             </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                               {similarItems.map((similar: any) => (
+                                 <div key={similar.id} className="bg-white/60 rounded-3xl p-4 ring-1 ring-purple-100 flex items-center gap-4 hover:bg-white transition-all">
+                                   <img src={similar.imageUrl} className="w-16 h-16 rounded-2xl object-cover grayscale-[0.5] hover:grayscale-0 transition-all" alt="" />
+                                   <div className="min-w-0">
+                                      <p className="text-sm font-bold text-slate-900 truncate">{similar.title}</p>
+                                      <span className="text-[10px] font-black text-purple-500 uppercase">{Math.round((similar.similarity ?? 0) * 100)}% Similarity</span>
+                                   </div>
+                                 </div>
+                               ))}
+                             </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* --- FOUND ITEMS GRID --- */}
+        <section className="space-y-8">
+           <div className="flex items-end justify-between px-2">
+            <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+              <span className="w-2 h-8 rounded-full bg-emerald-500" />
+              Found Log
+            </h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {foundItems.map((item) => (
+              <div key={item.id} className="group bg-white rounded-[2.5rem] overflow-hidden ring-1 ring-slate-200/50 shadow-sm hover:shadow-xl transition-all duration-500">
+                 <div className="h-48 bg-slate-50 relative overflow-hidden flex items-center justify-center">
+                    {item.imageUrl ? (
+                      <img src={item.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                    ) : (
+                      <Search className="w-8 h-8 text-slate-300" />
+                    )}
+                    <div className="absolute top-4 left-4">
+                      <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500 text-white">Found</span>
+                    </div>
+                 </div>
+                 <div className="p-8">
+                    <h3 className="font-bold text-lg text-slate-900 mb-2 truncate group-hover:text-indigo-600 transition-colors">{item.title}</h3>
+                    <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-50 text-[10px] font-black uppercase text-slate-300 tracking-tighter">
+                       <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{item.locationName || "Local"}</span>
+                       <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                    </div>
+                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
+  )
 }
