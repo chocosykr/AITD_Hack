@@ -32,6 +32,7 @@ model Item {
   category      ItemCategory @default(OTHER)
   status        ItemStatus   @default(ACTIVE)
   isVerified    Boolean      @default(false)
+  type          ItemType     @default(LOST)
 
   imageUrl      String?
   images        ItemImage[]
@@ -72,6 +73,11 @@ enum ItemCategory {
   DOCUMENTS
   KEYS
   OTHER
+}
+
+enum ItemType {
+  LOST
+  FOUND
 }
 
 enum ItemStatus {

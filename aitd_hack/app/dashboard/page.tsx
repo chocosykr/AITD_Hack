@@ -24,7 +24,7 @@ const items = await prisma.item.findMany({
     description: item.description ?? '',
     timeItemLost: `${item.lostDate ?? ''} ${item.lostTime ?? ''}`,
     category: item.category,
-    forum: 'Lost Items',
+    forum: item.type === 'FOUND' ? 'Found Items' : 'Lost Items',
     author: profileRow?.username || profileRow?.email || 'Unknown',
     createdAt: item.createdAt.toISOString(),
     likes: 0,

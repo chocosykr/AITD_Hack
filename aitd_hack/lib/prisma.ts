@@ -1,19 +1,23 @@
 // lib/prisma.ts
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
+export { Prisma };
+
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
+  prismaClient?: PrismaClient;
 };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
+  let connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error('DATABASE_URL is not set');
   }
+
+  connectionString = connectionString.replace('?sslmode=require', '').replace('&sslmode=require', '');
 
   const pool = new Pool({
     connectionString,
@@ -30,8 +34,8 @@ function createPrismaClient() {
 }
 
 export const prisma =
-  globalForPrisma.prisma ?? createPrismaClient();
+  globalForPrisma.prismaClient ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaClient = prisma;
 }

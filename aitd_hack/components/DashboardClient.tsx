@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import CreatePostModal from './CreatePostModal';
 
 type Post = {
@@ -92,6 +93,7 @@ export default function DashboardClient({
   const [activeSidebar, setActiveSidebar] = useState<'posts' | 'forums'>('posts');
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [postType, setPostType] = useState<'LOST' | 'FOUND'>('LOST');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imageNames, setImageNames] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
@@ -209,6 +211,7 @@ export default function DashboardClient({
     formData.append('lostDate', lostDate);
     formData.append('lostTime', lostTime);
     formData.append('category', category);
+    formData.append('type', postType);
 
     imageFiles.forEach((file) => {
       formData.append('images', file);
@@ -236,7 +239,7 @@ if (!res.ok) {
       description: created.description ?? '',
       timeItemLost: `${created.lostDate ?? ''} ${created.lostTime ?? ''}`,
       category: created.category,
-      forum: 'Lost Items',
+      forum: postType === 'FOUND' ? 'Found Items' : 'Lost Items',
       author: 'You',
       createdAt: created.createdAt,
       likes: 0,
@@ -303,6 +306,23 @@ if (!res.ok) {
                 <span>View Forums</span>
                 <span className="rounded-full bg-black/15 px-2 py-1 text-xs">{forums.length}</span>
               </button>
+
+              <Link
+                href="/browse"
+                id="sidebar-browse-all"
+                className="flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-cyan-500/10 to-emerald-500/10 px-4 py-3 text-left text-sm font-medium text-white/80 ring-1 ring-white/10 transition hover:from-cyan-500/20 hover:to-emerald-500/20 hover:text-white"
+              >
+                <span>🌐 Browse All Items</span>
+                <span className="rounded-full bg-white/10 px-2 py-1 text-xs">{posts.length}</span>
+              </Link>
+
+              <Link
+                href="/my-items"
+                id="sidebar-my-items"
+                className="flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-purple-500/10 to-cyan-500/10 px-4 py-3 text-left text-sm font-medium text-white/80 ring-1 ring-white/10 transition hover:from-purple-500/20 hover:to-cyan-500/20 hover:text-white"
+              >
+                <span>✨ My Items + AI Matches</span>
+              </Link>
             </nav>
           </aside>
 
@@ -346,6 +366,7 @@ if (!res.ok) {
                     <button
                       onClick={() => {
                         setFormError('');
+                        setPostType('LOST');
                         setCreateOpen(true);
                       }}
                       className="group min-h-[320px] rounded-[28px] border border-dashed border-cyan-400/35 bg-cyan-400/6 p-6 text-left transition hover:border-cyan-300 hover:bg-cyan-400/10"
@@ -355,9 +376,30 @@ if (!res.ok) {
                           +
                         </div>
                         <div>
-                          <h4 className="text-xl font-semibold text-white">Create new post</h4>
+                          <h4 className="text-xl font-semibold text-white">Report Lost Item</h4>
                           <p className="mt-2 text-sm leading-6 text-white/60">
                             Open the modal and save a lost item post into your database.
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setFormError('');
+                        setPostType('FOUND');
+                        setCreateOpen(true);
+                      }}
+                      className="group min-h-[320px] rounded-[28px] border border-dashed border-emerald-400/35 bg-emerald-400/6 p-6 text-left transition hover:border-emerald-300 hover:bg-emerald-400/10"
+                    >
+                      <div className="flex h-full flex-col justify-between">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400 text-3xl font-light text-neutral-950 shadow-lg shadow-emerald-500/20">
+                          ✓
+                        </div>
+                        <div>
+                          <h4 className="text-xl font-semibold text-white">Report Found Item</h4>
+                          <p className="mt-2 text-sm leading-6 text-white/60">
+                            Open the modal and save a found item post into your database.
                           </p>
                         </div>
                       </div>
@@ -450,6 +492,7 @@ if (!res.ok) {
 
       <CreatePostModal
         open={createOpen}
+        postType={postType}
         title={title}
         location={location}
         description={description}

@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 
 export type CreatePostModalProps = {
   open: boolean;
+  postType?: 'LOST' | 'FOUND';
   title: string;
   location: string;
   description: string;
@@ -27,6 +28,7 @@ export type CreatePostModalProps = {
 
 export default function CreatePostModal({
   open,
+  postType = 'LOST',
   title,
   location,
   description,
@@ -60,7 +62,7 @@ export default function CreatePostModal({
               Create post
             </p>
             <h3 className="mt-2 text-2xl font-semibold text-white">
-              Lost item report
+              {postType === 'FOUND' ? 'Found item report' : 'Lost item report'}
             </h3>
           </div>
           <button
@@ -82,7 +84,7 @@ export default function CreatePostModal({
               <input
                 value={title}
                 onChange={(e) => onTitleChange(e.target.value)}
-                placeholder="Ex: Lost black backpack near station"
+                placeholder={postType === 'FOUND' ? 'Ex: Found black backpack near station' : 'Ex: Lost black backpack near station'}
                 className="h-12 w-full rounded-2xl border border-white/10 bg-neutral-950/70 px-4 text-sm text-white placeholder:text-white/30 focus:border-cyan-400/50 focus:outline-none"
               />
             </div>
@@ -93,7 +95,7 @@ export default function CreatePostModal({
               <input
                 value={location}
                 onChange={(e) => onLocationChange(e.target.value)}
-                placeholder="Where was it lost?"
+                placeholder={postType === 'FOUND' ? 'Where was it found?' : 'Where was it lost?'}
                 className="h-12 w-full rounded-2xl border border-white/10 bg-neutral-950/70 px-4 text-sm text-white placeholder:text-white/30 focus:border-cyan-400/50 focus:outline-none"
               />
             </div>
@@ -103,7 +105,7 @@ export default function CreatePostModal({
           <div className="grid gap-5 md:grid-cols-3">
             <div>
               <label className="mb-2 block text-sm text-white/60">
-                Lost date
+                {postType === 'FOUND' ? 'Found date' : 'Lost date'}
               </label>
               <input
                 type="date"
@@ -114,7 +116,7 @@ export default function CreatePostModal({
             </div>
             <div>
               <label className="mb-2 block text-sm text-white/60">
-                Lost time
+                {postType === 'FOUND' ? 'Found time' : 'Lost time'}
               </label>
               <input
                 type="time"
@@ -154,7 +156,7 @@ export default function CreatePostModal({
               value={description}
               onChange={(e) => onDescriptionChange(e.target.value)}
               rows={6}
-              placeholder="Describe the lost item clearly so others can identify it"
+              placeholder={`Describe the ${postType === 'FOUND' ? 'found' : 'lost'} item clearly so others can identify it`}
               className="w-full rounded-2xl border border-white/10 bg-neutral-950/70 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-cyan-400/50 focus:outline-none"
             />
           </div>

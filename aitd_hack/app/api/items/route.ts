@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, Prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from '../../lib/supabase-admin';
 
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     const lostDate = formData.get('lostDate')?.toString();
     const lostTime = formData.get('lostTime')?.toString();
     const category = formData.get('category')?.toString();
+    const typeValue = formData.get('type')?.toString();
     const files = formData.getAll('images') as File[];
 
     if (!title?.trim()) {
@@ -104,6 +105,33 @@ export async function POST(req: Request) {
       });
     }
 
+    // Call Python FastAPI Backend
+    const backendFormData = new FormData();
+    const fileBytes = await files[0].arrayBuffer();
+    const fileBlob = new Blob([fileBytes], { type: files[0].type });
+    backendFormData.append('file', fileBlob, files[0].name);
+    backendFormData.append('location', location.trim());
+    backendFormData.append('item_type', typeValue === 'FOUND' ? 'found' : 'lost');
+    backendFormData.append('timestamp', new Date(lostDate).toISOString());
+
+    let embedding: number[] | null = null;
+    try {
+      const backendResponse = await fetch('http://localhost:8000/process_item', {
+        method: 'POST',
+        body: backendFormData,
+      });
+      if (backendResponse.ok) {
+        const backendData = await backendResponse.json();
+        if (backendData.embedding) {
+          embedding = backendData.embedding;
+        }
+      } else {
+        console.warn('Backend responded with error:', await backendResponse.text());
+      }
+    } catch (err) {
+      console.warn('Failed to call python backend:', err);
+    }
+
     const createdItem = await prisma.item.create({
       data: {
         title: title.trim(),
@@ -112,6 +140,7 @@ export async function POST(req: Request) {
         lostDate: new Date(lostDate),
         lostTime,
         category: toCategoryEnum(category),
+        type: typeValue === 'FOUND' ? 'FOUND' : 'LOST',
         status: 'ACTIVE',
         isVerified: false,
         imageUrl: uploadedImages[0]?.url ?? null,
@@ -127,6 +156,21 @@ export async function POST(req: Request) {
         images: true,
       },
     });
+
+    if (embedding && embedding.length > 0) {
+      try {
+        // Build the vector literal as a raw SQL fragment: '[0.1,0.2,...]'::vector
+        // We use Prisma.raw so the cast is NOT applied to a parameterized placeholder,
+        // which is the only way pgvector accepts the input.
+        const vectorLiteral = `'[${embedding.join(',')}]'::vector`;
+        await prisma.$executeRaw(
+          Prisma.sql`UPDATE "Item" SET embedding = ${Prisma.raw(vectorLiteral)} WHERE id = ${createdItem.id}`
+        );
+        console.log('Embedding stored for item', createdItem.id);
+      } catch (embErr) {
+        console.error('Failed to save embedding to database:', embErr);
+      }
+    }
 
     revalidatePath('/dashboard');
 
